@@ -204,6 +204,11 @@ panda = cms.EDAnalyzer('PandaProducer',
             puppiInput = cms.untracked.string('packedPFCandidates'),
             useExistingWeights = cms.untracked.bool(True)
         ),
+        protons = cms.untracked.PSet(
+            enabled = cms.untracked.bool(True),
+            filler = cms.untracked.string('Protons'),
+            protons = cms.untracked.string('ctppsLocalTrackLiteProducer')
+        ),
         partons = cms.untracked.PSet(
             enabled = cms.untracked.bool(True),
             filler = cms.untracked.string('Partons')
