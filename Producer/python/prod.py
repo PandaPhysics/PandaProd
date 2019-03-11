@@ -1,4 +1,3 @@
-
 from .opts import options
 
 # Global tags
