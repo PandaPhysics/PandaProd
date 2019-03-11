@@ -1,4 +1,5 @@
-from .opts import options
+
+from opts import options
 
 # Global tags
 # https://twiki.cern.ch/twiki/bin/view/CMSPublic/SWGuideFrontierConditions
