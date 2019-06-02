@@ -27,16 +27,15 @@ JetsFiller::JetsFiller(std::string const& _name, edm::ParameterSet const& _cfg, 
   csvTag_(getParameter_<std::string>(_cfg, "csv", "")),
   cmvaTag_(getParameter_<std::string>(_cfg, "cmva", "")),
   qglTag_(getParameter_<std::string>(_cfg, "qgl", "")),
+  puidTag_(getParameter_<std::string>(_cfg, "puid", "")),
   deepCsvTag_(getParameter_<std::string>(_cfg, "deepCSV", "")),
   deepCmvaTag_(getParameter_<std::string>(_cfg, "deepCMVA", "")),
-  puidTag_(getParameter_<std::string>(_cfg, "puid", "")),
   outGenJets_(getParameter_<std::string>(_cfg, "pandaGenJets", "")),
   constituentsLabel_(getParameter_<std::string>(_cfg, "constituents", "")),
   R_(getParameter_<double>(_cfg, "R", 0.4)),
   minPt_(getParameter_<double>(_cfg, "minPt", 15.)),
   maxEta_(getParameter_<double>(_cfg, "maxEta", 4.7)),
-  fillConstituents_(getParameter_<bool>(_cfg, "fillConstituents", false)),
-  subjetsOffset_(getParameter_<unsigned>(_cfg, "subjetsOffset", 0))
+  fillConstituents_(getParameter_<bool>(_cfg, "fillConstituents", false))
 {
   if (_name == "chsAK4Jets")
     outputSelector_ = [](panda::Event& _event)->panda::JetCollection& { return _event.chsAK4Jets; };
@@ -54,7 +53,6 @@ JetsFiller::JetsFiller(std::string const& _name, edm::ParameterSet const& _cfg, 
     throw edm::Exception(edm::errors::Configuration, "Unknown JetCollection output");    
 
   getToken_(jetsToken_, _cfg, _coll, "jets");
-  getToken_(puidJetsToken_, _cfg, _coll, "pileupJets", false);
   if (!isRealData_) {
     getToken_(genJetsToken_, _cfg, _coll, "genJets", false);
     getToken_(rhoToken_, _cfg, _coll, "rho", "rho");
@@ -144,8 +142,6 @@ JetsFiller::fill(panda::Event& _outEvent, edm::Event const& _inEvent, edm::Event
     }
   }
 
-  auto* puidJets(puidJetsToken_.second.isUninitialized() ? nullptr : &getProduct_(_inEvent, puidJetsToken_));
-
   std::vector<edm::Ptr<reco::Jet>> ptrList;
   std::vector<edm::Ptr<reco::GenJet>> matchedGenJets;
 
@@ -165,16 +161,6 @@ JetsFiller::fill(panda::Event& _outEvent, edm::Event const& _inEvent, edm::Event
     // Forking for MINIAOD jets (not that we have implementation for reco::PFJet though)
     if (dynamic_cast<pat::Jet const*>(&inJet)) {
       auto& patJet(static_cast<pat::Jet const&>(inJet));
-
-      const pat::Jet* puidJet(puidJets == nullptr ? &patJet : nullptr);
-      if (puidJet == nullptr) {
-        for (auto& inPuid : *puidJets) {
-          if (reco::deltaR(patJet, inPuid) < 0.2) {
-            puidJet = &inPuid;
-            break;
-          }
-        }
-      }
 
       double nhf(patJet.neutralHadronEnergyFraction());
       double nef(patJet.neutralEmEnergyFraction());
@@ -280,14 +266,15 @@ JetsFiller::fill(panda::Event& _outEvent, edm::Event const& _inEvent, edm::Event
 
       if (!qglTag_.empty())
         outJet.qgl = patJet.userFloat(qglTag_);
+
+      if (!puidTag_.empty())
+        outJet.puid = patJet.userFloat(puidTag_);
         
       outJet.area = inJet.jetArea();
       outJet.nhf = nhf;
       outJet.chf = chf;
       outJet.nef = nef;
       outJet.cef = cef;
-      if (!puidTag_.empty())
-        outJet.puid = (puidJet != nullptr) ? puidJet->userFloat(puidTag_) : -2.0;
       outJet.loose = loose;
       outJet.tight = tight;
       outJet.tightLepVeto = tightLepVeto;
@@ -334,6 +321,10 @@ JetsFiller::setRefs(ObjectMapStore const& _objectMaps)
       auto& inJet(*link.first);
       auto& outJet(*link.second);
 
+      auto* inPATJet(dynamic_cast<pat::Jet const*>(&inJet));
+      if (inPATJet == nullptr)
+        continue;
+
       auto addPFRef([&outJet, &pfMap](reco::CandidatePtr const& _ptr) {
           reco::CandidatePtr p(_ptr);
           while (true) {
@@ -352,23 +343,9 @@ JetsFiller::setRefs(ObjectMapStore const& _objectMaps)
             }
           }
         });
-
-      auto&& constituents(inJet.getJetConstituents());
-
-      unsigned iConst(0);
       
-      for (; iConst != subjetsOffset_ && iConst != constituents.size(); ++iConst) {
-        // constituents up to subjetsOffset are actually subjets
-        auto* subjet(dynamic_cast<reco::Jet const*>(constituents[iConst].get()));
-        if (!subjet)
-          throw std::runtime_error(TString::Format("Constituent %d is not a subjet", iConst).Data());
-
-        for (auto&& ptr : subjet->getJetConstituents())
-          addPFRef(ptr);
-      }
-
-      for (; iConst != constituents.size(); ++iConst)
-        addPFRef(constituents[iConst]);
+      for (auto&& ptr : inPATJet->daughterPtrVector())
+        addPFRef(ptr);
     }
   }
 

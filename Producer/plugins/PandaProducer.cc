@@ -86,8 +86,9 @@ PandaProducer::PandaProducer(edm::ParameterSet const& _cfg) :
     if (fillerName == "common")
       continue;
 
-    auto& fillerPSet(fillersCfg.getUntrackedParameterSet(fillerName));
     try {
+      auto& fillerPSet(fillersCfg.getUntrackedParameterSet(fillerName));
+      
       if (!fillerPSet.getUntrackedParameter<bool>("enabled"))
         continue;
 
@@ -131,6 +132,9 @@ PandaProducer::PandaProducer(edm::ParameterSet const& _cfg) :
 
   // The lambda function inside will be called by CMSSW Framework whenever a new product is registered
   callWhenNewProductsRegistered([this](edm::BranchDescription const& branchDescription) {
+      if (branchDescription.dropped())
+        return;
+      
       auto&& coll(this->consumesCollector());
       for (auto* filler : this->fillers_)
         filler->notifyNewProduct(branchDescription, coll);
